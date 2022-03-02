@@ -83,11 +83,16 @@ public class BNLJOperator extends JoinOperator {
          * If there are no more records in the left source, this method should
          * do nothing.
          *
-         * You may find QueryOperator#getBlockIterator useful here.
+         * You may find QueryOperator.getBlockIterator useful here.
          * Make sure you pass in the correct schema to this method.
          */
         private void fetchNextLeftBlock() {
-            // TODO(proj3_part1): implement
+            if (!leftSourceIterator.hasNext()) {
+                return;
+            }
+            leftBlockIterator = QueryOperator.getBlockIterator(leftSourceIterator, getLeftSource().getSchema(), numBuffers - 2);
+            leftBlockIterator.markNext();
+            leftRecord = leftBlockIterator.next();
         }
 
         /**
@@ -98,26 +103,54 @@ public class BNLJOperator extends JoinOperator {
          * If there are no more records in the right source, this method should
          * do nothing.
          *
-         * You may find QueryOperator#getBlockIterator useful here.
+         * You may find QueryOperator.getBlockIterator useful here.
          * Make sure you pass in the correct schema to this method.
          */
         private void fetchNextRightPage() {
-            // TODO(proj3_part1): implement
+            if (!rightSourceIterator.hasNext()) {
+                return;
+            }
+            rightPageIterator = QueryOperator.getBlockIterator(rightSourceIterator, getRightSource().getSchema(), 1);
+            rightPageIterator.markNext();
         }
 
         /**
          * Returns the next record that should be yielded from this join,
          * or null if there are no more records to join.
          *
-         * You may find JoinOperator#compare useful here. (You can call compare
+         * You may find JoinOperator.compare useful here. (You can call compare
          * function directly from this file, since BNLJOperator is a subclass
          * of JoinOperator).
          */
         private Record fetchNextRecord() {
-            // TODO(proj3_part1): implement
-            return null;
+            while(true) {
+                Record rightRecord = null;
+                if (rightPageIterator.hasNext()) {
+                    rightRecord = rightPageIterator.next();
+                } else if (leftBlockIterator.hasNext()) {
+                    rightPageIterator.reset();
+                    leftRecord = leftBlockIterator.next();
+                    rightRecord = rightPageIterator.next();
+                } else if (rightSourceIterator.hasNext()) {
+                    fetchNextRightPage();
+                    leftBlockIterator.reset();
+                    leftRecord = leftBlockIterator.next();
+                    rightRecord = rightPageIterator.next();
+                } else if (leftSourceIterator.hasNext()) {
+                    fetchNextLeftBlock();
+                    rightSourceIterator.reset();
+                    fetchNextRightPage();
+                    rightRecord = rightPageIterator.next();
+                }
+                if (rightRecord == null) {
+                    return null;
+                } else {
+                    if (compare(leftRecord, rightRecord) == 0) {
+                        return leftRecord.concat(rightRecord);
+                    }
+                }
+            }
         }
-
         /**
          * @return true if this iterator has another record to yield, otherwise
          * false
